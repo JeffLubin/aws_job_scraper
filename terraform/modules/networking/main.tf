@@ -144,6 +144,15 @@ resource "aws_security_group_rule" "rds_from_lambda" {
   source_security_group_id = aws_security_group.lambda.id
 }
 
+resource "aws_security_group_rule" "rds_from_test_ec2" {
+  type                     = "ingress"
+  from_port                = var.rds_port
+  to_port                  = var.rds_port
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds.id
+  source_security_group_id = aws_security_group.test_ec2.id
+}
+
 resource "aws_security_group" "endpoints" {
   name        = "${var.project_name}-endpoints-sg"
   description = "Interface VPC endpoint access"
