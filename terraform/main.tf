@@ -13,3 +13,16 @@ module "rds" {
   endpoints_security_group_id = module.networking.endpoints_security_group_id
   vpc_cidr                    = module.networking.vpc_cidr
 }
+
+module "dispatcher" {
+  source = "./modules/dispatcher"
+}
+
+module "scraper" {
+  source = "./modules/scraper"
+
+  vpc_subnet_ids           = module.networking.private_subnet_ids
+  lambda_security_group_id = module.networking.lambda_security_group_id
+  scrape_queue_arn         = module.dispatcher.scrape_queue_arn
+  db_secret_arn            = module.rds.secret_arn
+}
