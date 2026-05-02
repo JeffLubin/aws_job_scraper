@@ -70,15 +70,8 @@ data "aws_iam_policy_document" "lambda" {
   }
 
   statement {
-    actions   = ["bedrock:InvokeModel"]
-    resources = [
-      "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0",
-    ]
-  }
-
-  statement {
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.db_secret_arn]
+    resources = [var.db_secret_arn, var.openai_secret_arn]
   }
 }
 
@@ -106,7 +99,8 @@ resource "aws_lambda_function" "scorer" {
   environment {
     variables = {
       DB_SECRET_ARN    = var.db_secret_arn
-      BEDROCK_MODEL_ID = "amazon.nova-lite-v1:0"
+      OPENAI_SECRET_ARN = var.openai_secret_arn
+      OPENAI_MODEL     = "gpt-4.1-nano"
       LOG_LEVEL        = "INFO"
     }
   }

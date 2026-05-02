@@ -17,3 +17,11 @@ output "ecr_repo_url" {
 output "lambda_function_name" {
   value = aws_lambda_function.enricher.function_name
 }
+
+output "score_queue_name" {
+  value = aws_sqs_queue.score.name
+}
+
+output "score_dlq_name" {
+  value = aws_sqs_queue.score_dlq.name
+}

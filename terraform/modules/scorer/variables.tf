@@ -19,6 +19,10 @@ variable "db_secret_arn" {
   type = string
 }
 
+variable "openai_secret_arn" {
+  type = string
+}
+
 variable "image_tag" {
   type    = string
   default = "latest"

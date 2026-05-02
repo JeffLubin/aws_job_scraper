@@ -7,17 +7,20 @@ import time
 
 import boto3
 import psycopg2
+from openai import OpenAI
 
 logger = logging.getLogger()
 logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 for handler in logger.handlers:
     handler.setFormatter(logging.Formatter("%(message)s"))
 
-bedrock = boto3.client("bedrock-runtime")
 secretsmanager = boto3.client("secretsmanager")
 
 DB_SECRET_ARN = os.environ["DB_SECRET_ARN"]
-BEDROCK_MODEL_ID = os.environ["BEDROCK_MODEL_ID"]
+OPENAI_SECRET_ARN = os.environ["OPENAI_SECRET_ARN"]
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+
+_openai_client = None
 
 _db_secret = None
 _db_conn = None
@@ -201,10 +204,23 @@ def save_score(job_url, score_result):
 
 
 # ---------------------------------------------------------------------------
-# Bedrock invocation
+# OpenAI client
 # ---------------------------------------------------------------------------
 
-def invoke_bedrock(title, company, description, strict=False):
+def get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        response = secretsmanager.get_secret_value(SecretId=OPENAI_SECRET_ARN)
+        api_key = response["SecretString"]
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
+
+
+# ---------------------------------------------------------------------------
+# OpenAI invocation
+# ---------------------------------------------------------------------------
+
+def invoke_openai(title, company, description, strict=False):
     user_content = f"Job title: {title}\nCompany: {company}\nDescription: {description}"
     if strict:
         user_content = (
@@ -212,30 +228,23 @@ def invoke_bedrock(title, company, description, strict=False):
             + user_content
         )
 
-    body = json.dumps({
-        "messages": [
-            {"role": "user", "content": [{"text": user_content}]},
+    client = get_openai_client()
+    response = client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
         ],
-        "system": [{"text": SYSTEM_PROMPT}],
-        "inferenceConfig": {
-            "maxTokens": 200,
-            "temperature": 0.0,
-        },
-    })
-
-    response = bedrock.invoke_model(
-        modelId=BEDROCK_MODEL_ID,
-        body=body,
-        contentType="application/json",
-        accept="application/json",
+        max_tokens=200,
+        temperature=0.0,
     )
-    response_body = json.loads(response["body"].read())
-    raw_text = response_body["output"]["message"]["content"][0]["text"]
+
+    raw_text = response.choices[0].message.content
 
     try:
         result = json.loads(raw_text)
     except json.JSONDecodeError:
-        log(logging.WARNING, "bedrock_json_parse_failed",
+        log(logging.WARNING, "openai_json_parse_failed",
             raw_response=raw_text, strict=strict)
         return None
 
@@ -243,19 +252,19 @@ def invoke_bedrock(title, company, description, strict=False):
     product_domain = result.get("product_domain")
 
     if not isinstance(fit_score, int) or not (1 <= fit_score <= 10):
-        log(logging.WARNING, "bedrock_invalid_fit_score",
+        log(logging.WARNING, "openai_invalid_fit_score",
             fit_score=fit_score, raw_response=raw_text, strict=strict)
         return None
 
     if not isinstance(product_domain, str) or not product_domain:
-        log(logging.WARNING, "bedrock_invalid_product_domain",
+        log(logging.WARNING, "openai_invalid_product_domain",
             product_domain=product_domain, raw_response=raw_text, strict=strict)
         return None
 
-    usage = response_body.get("usage", {})
+    usage = response.usage
     result["_usage"] = {
-        "input_tokens": usage.get("inputTokens"),
-        "output_tokens": usage.get("outputTokens"),
+        "input_tokens": usage.prompt_tokens if usage else None,
+        "output_tokens": usage.completion_tokens if usage else None,
     }
     return result
 
@@ -290,18 +299,18 @@ def process_record(record):
     start = time.time()
 
     # First attempt
-    result = invoke_bedrock(job["title"], job["company"], clean_description)
+    result = invoke_openai(job["title"], job["company"], clean_description)
 
     # Retry with stricter JSON instructions
     if result is None:
-        result = invoke_bedrock(
+        result = invoke_openai(
             job["title"], job["company"], clean_description, strict=True
         )
 
     # Both attempts failed
     if result is None:
         raise ValueError(
-            f"Bedrock returned invalid JSON after 2 attempts for {job_url}"
+            f"OpenAI returned invalid JSON after 2 attempts for {job_url}"
         )
 
     duration_ms = int((time.time() - start) * 1000)

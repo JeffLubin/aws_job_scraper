@@ -17,3 +17,11 @@ output "ecr_repo_url" {
 output "lambda_function_name" {
   value = aws_lambda_function.dispatcher.function_name
 }
+
+output "scrape_queue_name" {
+  value = aws_sqs_queue.scrape.name
+}
+
+output "dlq_name" {
+  value = aws_sqs_queue.dlq.name
+}
