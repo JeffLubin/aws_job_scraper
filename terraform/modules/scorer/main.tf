@@ -98,10 +98,10 @@ resource "aws_lambda_function" "scorer" {
 
   environment {
     variables = {
-      DB_SECRET_ARN    = var.db_secret_arn
+      DB_SECRET_ARN     = var.db_secret_arn
       OPENAI_SECRET_ARN = var.openai_secret_arn
-      OPENAI_MODEL     = "gpt-4.1-nano"
-      LOG_LEVEL        = "INFO"
+      OPENAI_MODEL      = "gpt-4.1-nano"
+      LOG_LEVEL         = "INFO"
     }
   }
 
