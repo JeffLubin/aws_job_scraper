@@ -143,13 +143,18 @@ data "aws_iam_policy_document" "terraform_permissions" {
     ]
   }
 
-  # CloudWatch Logs
+  # CloudWatch Logs (DescribeLogGroups requires * resource)
   statement {
     actions = ["logs:*"]
     resources = [
       "arn:${data.aws_partition.current.partition}:logs:${var.aws_region}:${var.aws_account_id}:log-group:/aws/lambda/${var.project_name}-*",
       "arn:${data.aws_partition.current.partition}:logs:${var.aws_region}:${var.aws_account_id}:log-group:/aws/lambda/${var.project_name}-*:*",
     ]
+  }
+
+  statement {
+    actions   = ["logs:DescribeLogGroups"]
+    resources = ["*"]
   }
 
   # CloudWatch Alarms + Dashboards
@@ -231,13 +236,18 @@ data "aws_iam_policy_document" "terraform_permissions" {
     resources = ["*"]
   }
 
-  # RDS
+  # RDS (DescribeDBEngineVersions requires * resource)
   statement {
     actions = ["rds:*"]
     resources = [
       "arn:${data.aws_partition.current.partition}:rds:${var.aws_region}:${var.aws_account_id}:db:${var.project_name}-*",
       "arn:${data.aws_partition.current.partition}:rds:${var.aws_region}:${var.aws_account_id}:subgrp:${var.project_name}-*",
     ]
+  }
+
+  statement {
+    actions   = ["rds:DescribeDBEngineVersions"]
+    resources = ["*"]
   }
 
   # Secrets Manager

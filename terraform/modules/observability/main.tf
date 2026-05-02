@@ -234,17 +234,17 @@ resource "aws_cloudwatch_dashboard" "main" {
       [
         for i, pair in [
           for k, v in local.lambda_functions : { key = k, name = v }
-        ] : {
+          ] : {
           type   = "metric"
           x      = i * 6
           y      = 0
           width  = 6
           height = 6
           properties = {
-            title   = "${pair.key} invocations/errors"
-            region  = data.aws_region.current.region
-            period  = 300
-            stat    = "Sum"
+            title  = "${pair.key} invocations/errors"
+            region = data.aws_region.current.region
+            period = 300
+            stat   = "Sum"
             metrics = [
               ["AWS/Lambda", "Invocations", "FunctionName", pair.name, { color = "#2ca02c" }],
               ["AWS/Lambda", "Errors", "FunctionName", pair.name, { color = "#d62728" }],
@@ -257,16 +257,16 @@ resource "aws_cloudwatch_dashboard" "main" {
       [
         for i, pair in [
           for k, v in local.lambda_functions : { key = k, name = v }
-        ] : {
+          ] : {
           type   = "metric"
           x      = i * 6
           y      = 6
           width  = 6
           height = 6
           properties = {
-            title   = "${pair.key} duration"
-            region  = data.aws_region.current.region
-            period  = 300
+            title  = "${pair.key} duration"
+            region = data.aws_region.current.region
+            period = 300
             metrics = [
               ["AWS/Lambda", "Duration", "FunctionName", pair.name, { stat = "Average", color = "#1f77b4" }],
               ["AWS/Lambda", "Duration", "FunctionName", pair.name, { stat = "p99", color = "#ff7f0e" }],
@@ -284,10 +284,10 @@ resource "aws_cloudwatch_dashboard" "main" {
           width  = 12
           height = 6
           properties = {
-            title   = "SQS Queue Depths"
-            region  = data.aws_region.current.region
-            period  = 300
-            stat    = "Maximum"
+            title  = "SQS Queue Depths"
+            region = data.aws_region.current.region
+            period = 300
+            stat   = "Maximum"
             metrics = [
               for k, v in local.queues :
               ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", v]
@@ -301,10 +301,10 @@ resource "aws_cloudwatch_dashboard" "main" {
           width  = 12
           height = 6
           properties = {
-            title   = "SQS Message Age (seconds)"
-            region  = data.aws_region.current.region
-            period  = 300
-            stat    = "Maximum"
+            title  = "SQS Message Age (seconds)"
+            region = data.aws_region.current.region
+            period = 300
+            stat   = "Maximum"
             metrics = [
               for k, v in local.queues :
               ["AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", v]
@@ -322,10 +322,10 @@ resource "aws_cloudwatch_dashboard" "main" {
           width  = 12
           height = 6
           properties = {
-            title   = "Dead-Letter Queue Depths"
-            region  = data.aws_region.current.region
-            period  = 300
-            stat    = "Maximum"
+            title  = "Dead-Letter Queue Depths"
+            region = data.aws_region.current.region
+            period = 300
+            stat   = "Maximum"
             metrics = [
               for k, v in local.dlqs :
               ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", v]
@@ -343,11 +343,11 @@ resource "aws_cloudwatch_dashboard" "main" {
           width  = 8
           height = 6
           properties = {
-            title   = "RDS CPU Utilization"
-            region  = data.aws_region.current.region
-            period  = 300
-            stat    = "Average"
-            yAxis   = { left = { min = 0, max = 100 } }
+            title  = "RDS CPU Utilization"
+            region = data.aws_region.current.region
+            period = 300
+            stat   = "Average"
+            yAxis  = { left = { min = 0, max = 100 } }
             metrics = [
               ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", var.db_instance_identifier, { color = "#d62728" }],
             ]
@@ -365,10 +365,10 @@ resource "aws_cloudwatch_dashboard" "main" {
           width  = 8
           height = 6
           properties = {
-            title   = "RDS Database Connections"
-            region  = data.aws_region.current.region
-            period  = 300
-            stat    = "Average"
+            title  = "RDS Database Connections"
+            region = data.aws_region.current.region
+            period = 300
+            stat   = "Average"
             metrics = [
               ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", var.db_instance_identifier, { color = "#1f77b4" }],
             ]
@@ -381,10 +381,10 @@ resource "aws_cloudwatch_dashboard" "main" {
           width  = 8
           height = 6
           properties = {
-            title   = "RDS Free Storage (GB)"
-            region  = data.aws_region.current.region
-            period  = 300
-            stat    = "Minimum"
+            title  = "RDS Free Storage (GB)"
+            region = data.aws_region.current.region
+            period = 300
+            stat   = "Minimum"
             metrics = [
               [{ expression = "m1 / 1073741824", label = "Free Storage (GB)", id = "e1" }],
               ["AWS/RDS", "FreeStorageSpace", "DBInstanceIdentifier", var.db_instance_identifier, { id = "m1", visible = false }],
