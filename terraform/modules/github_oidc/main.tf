@@ -236,17 +236,9 @@ data "aws_iam_policy_document" "terraform_permissions" {
     resources = ["*"]
   }
 
-  # RDS (DescribeDBEngineVersions requires * resource)
+  # RDS (multiple Describe actions require * resource)
   statement {
-    actions = ["rds:*"]
-    resources = [
-      "arn:${data.aws_partition.current.partition}:rds:${var.aws_region}:${var.aws_account_id}:db:${var.project_name}-*",
-      "arn:${data.aws_partition.current.partition}:rds:${var.aws_region}:${var.aws_account_id}:subgrp:${var.project_name}-*",
-    ]
-  }
-
-  statement {
-    actions   = ["rds:DescribeDBEngineVersions"]
+    actions   = ["rds:*"]
     resources = ["*"]
   }
 
