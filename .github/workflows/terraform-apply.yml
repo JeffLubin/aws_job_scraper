@@ -1,0 +1,174 @@
+name: "Deploy"
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "548911563197"
+  TF_VERSION: "1.14.0"
+  WORKING_DIR: terraform
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      dispatcher: ${{ steps.changes.outputs.dispatcher }}
+      scraper: ${{ steps.changes.outputs.scraper }}
+      enricher: ${{ steps.changes.outputs.enricher }}
+      scorer: ${{ steps.changes.outputs.scorer }}
+      terraform: ${{ steps.changes.outputs.terraform }}
+      any_lambda: ${{ steps.changes.outputs.any_lambda }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed paths
+        id: changes
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          echo "dispatcher=$( echo "$CHANGED" | grep -q '^lambda/dispatcher/' && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "scraper=$( echo "$CHANGED" | grep -q '^lambda/scraper/' && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "enricher=$( echo "$CHANGED" | grep -q '^lambda/enricher/' && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "scorer=$( echo "$CHANGED" | grep -q '^lambda/scorer/' && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          echo "terraform=$( echo "$CHANGED" | grep -q '^terraform/' && echo true || echo false )" >> "$GITHUB_OUTPUT"
+
+          if echo "$CHANGED" | grep -q '^lambda/'; then
+            echo "any_lambda=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any_lambda=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.terraform == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/aws-job-scraper-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Cache Terraform plugins
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.WORKING_DIR }}/.terraform/providers
+          key: terraform-providers-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+          restore-keys: |
+            terraform-providers-
+
+      - name: Terraform Init
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform init -backend-config=environments/dev/backend.hcl
+
+      - name: Terraform Apply
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          terraform apply \
+            -var="alert_email=${{ secrets.TF_VAR_ALERT_EMAIL }}" \
+            -auto-approve
+
+  build-and-push:
+    name: Build ${{ matrix.lambda }} Image
+    runs-on: ubuntu-latest
+    needs: [detect-changes, terraform-apply]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.any_lambda == 'true' &&
+      (needs.terraform-apply.result == 'success' || needs.terraform-apply.result == 'skipped')
+    strategy:
+      matrix:
+        include:
+          - lambda: dispatcher
+            ecr_repo: aws-job-scraper-dispatcher
+            context: lambda/dispatcher
+          - lambda: scraper
+            ecr_repo: aws-job-scraper-scraper
+            context: lambda/scraper
+          - lambda: enricher
+            ecr_repo: aws-job-scraper-enricher
+            context: lambda/enricher
+          - lambda: scorer
+            ecr_repo: aws-job-scraper-scorer
+            context: lambda/scorer
+    steps:
+      - name: Check if this lambda changed
+        id: should_build
+        run: |
+          case "${{ matrix.lambda }}" in
+            dispatcher) echo "changed=${{ needs.detect-changes.outputs.dispatcher }}" >> "$GITHUB_OUTPUT" ;;
+            scraper)    echo "changed=${{ needs.detect-changes.outputs.scraper }}" >> "$GITHUB_OUTPUT" ;;
+            enricher)   echo "changed=${{ needs.detect-changes.outputs.enricher }}" >> "$GITHUB_OUTPUT" ;;
+            scorer)     echo "changed=${{ needs.detect-changes.outputs.scorer }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Checkout
+        if: steps.should_build.outputs.changed == 'true'
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        if: steps.should_build.outputs.changed == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/aws-job-scraper-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        if: steps.should_build.outputs.changed == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        if: steps.should_build.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        if: steps.should_build.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ matrix.ecr_repo }}:latest
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ matrix.ecr_repo }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.lambda }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.lambda }}
+
+      - name: Force Lambda to pull new image
+        if: steps.should_build.outputs.changed == 'true'
+        run: |
+          IMAGE_URI="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ matrix.ecr_repo }}:${{ github.sha }}"
+          FUNCTION_NAME="aws-job-scraper-${{ matrix.lambda }}"
+
+          echo "Updating $FUNCTION_NAME to image $IMAGE_URI"
+          aws lambda update-function-code \
+            --function-name "$FUNCTION_NAME" \
+            --image-uri "$IMAGE_URI"
+
+          echo "Waiting for function update to complete..."
+          aws lambda wait function-updated \
+            --function-name "$FUNCTION_NAME"
+
+          echo "Lambda $FUNCTION_NAME updated successfully"

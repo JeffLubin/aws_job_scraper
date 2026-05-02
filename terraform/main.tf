@@ -66,3 +66,13 @@ module "observability" {
 
   db_instance_identifier = module.rds.db_instance_identifier
 }
+
+module "github_oidc" {
+  source = "./modules/github_oidc"
+
+  github_org     = "JeffLubin"
+  github_repo    = "aws_job_scraper"
+  aws_account_id = "548911563197"
+  state_bucket   = "aws-job-scraper-tfstate-548911563197-us-east-1"
+  lock_table     = "aws-job-scraper-terraform-locks"
+}
