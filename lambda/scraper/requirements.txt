@@ -1,0 +1,3 @@
+python-jobspy
+psycopg2-binary
+pandas
